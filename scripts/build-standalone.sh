@@ -8,7 +8,6 @@ rm -rf "$RUNTIME"
 git clone --depth 1 https://github.com/nikita36078/J2ME-Loader.git "$RUNTIME"
 chmod +x "$RUNTIME/gradlew"
 mkdir -p "$RUNTIME/app/src/main/assets/embedded/midlet"
-mkdir -p "$RUNTIME/app/src/standalone"
 mkdir -p "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader"
 cp scripts/StandaloneLauncherActivity.java "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader/StandaloneLauncherActivity.java"
 
@@ -28,9 +27,9 @@ storeFile=$RUNTIME/standalone-debug.keystore
 storePassword=android
 EOF
 
-# Install the X-Men-only virtual keyboard into the standalone runtime.
 python3 - <<'PY'
 from pathlib import Path
+
 p = Path('runtime/app/src/main/java/javax/microedition/lcdui/keyboard/VirtualKeyboard.java')
 s = p.read_text()
 
@@ -47,27 +46,25 @@ if start != -1:
         s = s[:start] + s[end:]
 
 needle = '\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'
-case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// Only the requested X-Men controls are visible. No phone, numeric,\n\t\t\t\t// emulator or default keypad is allowed to appear.\n\t\t\t\tArrays.fill(keyScales, 1.0f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\n\t\t\t\t// L and R at the upper edge.\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);\n\n\t\t\t\t// Supplied keypad: home/up symbol, left, right and down at the bottom-left.\n\t\t\t\tsetSnap(KEY_UP, SCREEN, RectSnap.INT_SOUTHWEST, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_UP, RectSnap.EXT_WEST, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_UP, RectSnap.EXT_EAST, true);\n\t\t\t\tsetSnap(KEY_DOWN, KEY_UP, RectSnap.EXT_SOUTH, true);\n\n\t\t\t\t// 5 in the lower-right/middle and pause in the bottom-right.\n\t\t\t\tsetSnap(KEY_NUM5, SCREEN, RectSnap.INT_EAST, true);\n\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
+case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// X-Men-only layout. Hide every standard emulator/phone key first.\n\t\t\t\tArrays.fill(keyScales, 0.72f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\n\t\t\t\t// Hidden corner anchors keep every visible button away from the edges.\n\t\t\t\t// L / R are inset from the upper corners.\n\t\t\t\tsetSnap(KEY_A, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_B, SCREEN, RectSnap.INT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, KEY_A, RectSnap.EXT_EAST, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, KEY_B, RectSnap.EXT_WEST, true);\n\n\t\t\t\t// Hidden bottom-center anchor. The four directions form a complete cross.\n\t\t\t\tsetSnap(KEY_MENU, SCREEN, RectSnap.INT_SOUTH, true);\n\t\t\t\tsetSnap(KEY_DOWN, KEY_MENU, RectSnap.EXT_NORTH, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_WEST, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_EAST, true);\n\t\t\t\tsetSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);\n\n\t\t\t\t// 5 and 0 form a vertical pair in the lower-right, inset from the edge.\n\t\t\t\tsetSnap(KEY_C, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tsetSnap(KEY_NUM0, KEY_C, RectSnap.EXT_WEST, true);\n\t\t\t\tsetSnap(KEY_NUM5, KEY_NUM0, RectSnap.EXT_NORTH, true);\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
 if needle not in s:
-    raise SystemExit('X-Men keypad insertion point not found')
+    raise SystemExit('X-Men layout insertion point not found')
 s = s.replace(needle, case, 1)
 
-# The supplied image uses a home-shaped symbol for the upper-left directional button.
+# Keep the requested directional arrow labels and do not replace them with home/pause symbols.
 s = s.replace(
-    'keypad[KEY_UP] = new VirtualKey(Canvas.KEY_UP, ARROW_UP);',
     'keypad[KEY_UP] = new VirtualKey(Canvas.KEY_UP, "⌂");',
+    'keypad[KEY_UP] = new VirtualKey(Canvas.KEY_UP, ARROW_UP);',
     1,
 )
-# The supplied image uses a pause symbol rather than the generic F label.
 s = s.replace(
-    'keypad[KEY_FIRE] = new VirtualKey(Canvas.KEY_FIRE, "F");',
     'keypad[KEY_FIRE] = new VirtualKey(Canvas.KEY_FIRE, "Ⅱ");',
+    'keypad[KEY_FIRE] = new VirtualKey(Canvas.KEY_FIRE, "F");',
     1,
 )
 p.write_text(s)
 PY
 
-# Make the standalone activity the only launcher.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('runtime/app/src/main/AndroidManifest.xml')
@@ -110,16 +107,16 @@ rm -f "$DX_JAR"
 python3 - <<'PY'
 from pathlib import Path
 import re
-p=Path('runtime/app/build.gradle')
-s=p.read_text()
-s=re.sub(r'\n    signingConfigs \{.*?\n    \}\n\n    buildTypes','\n    buildTypes',s,count=1,flags=re.S)
-s=s.replace('            signingConfig signingConfigs.release\n','')
+p = Path('runtime/app/build.gradle')
+s = p.read_text()
+s = re.sub(r'\n    signingConfigs \{.*?\n    \}\n\n    buildTypes', '\n    buildTypes', s, count=1, flags=re.S)
+s = s.replace('            signingConfig signingConfigs.release\n', '')
 if "buildConfigField 'boolean', 'STANDALONE'" not in s:
-    s=s.replace('        versionName "1.8.2"','        versionName "1.8.2"\n        buildConfigField \'boolean\', \'STANDALONE\', \'false\'',1)
-marker='        // variant dimension for create android port from J2ME app source\n'
-flavor='''        standalone {\n            buildConfigField 'boolean', 'STANDALONE', 'true'\n            buildConfigField 'boolean', 'FULL_EMULATOR', 'true'\n            versionNameSuffix "-standalone"\n            resValue 'string', 'app_name', 'X-Men 3 - The Last Stand'\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),\n                    'proguard-rules.pro', 'proguard-common.pro'\n        }\n'''
+    s = s.replace('        versionName "1.8.2"', '        versionName "1.8.2"\n        buildConfigField \'boolean\', \'STANDALONE\', \'false\'', 1)
+marker = '        // variant dimension for create android port from J2ME app source\n'
+flavor = '''        standalone {\n            buildConfigField 'boolean', 'STANDALONE', 'true'\n            buildConfigField 'boolean', 'FULL_EMULATOR', 'true'\n            versionNameSuffix "-standalone"\n            resValue 'string', 'app_name', 'X-Men 3 - The Last Stand'\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),\n                    'proguard-rules.pro', 'proguard-common.pro'\n        }\n'''
 if '        standalone {' not in s:
-    s=s.replace(marker,flavor+marker,1)
+    s = s.replace(marker, flavor + marker, 1)
 p.write_text(s)
 PY
 
