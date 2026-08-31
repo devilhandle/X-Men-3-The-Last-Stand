@@ -8,6 +8,8 @@ rm -rf "$RUNTIME"
 git clone --depth 1 https://github.com/nikita36078/J2ME-Loader.git "$RUNTIME"
 mkdir -p "$RUNTIME/app/src/main/assets/embedded/midlet"
 mkdir -p "$RUNTIME/app/src/standalone"
+mkdir -p "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader"
+cp scripts/StandaloneLauncherActivity.java "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader/StandaloneLauncherActivity.java"
 
 # Build the bundled J2ME Loader dexlib so the same converter used by J2ME Loader
 # can convert the original MIDlet JAR into the runtime's converted.dex format.
@@ -26,7 +28,6 @@ if [[ -z "$ZIP4J_JAR" || -z "$ASM_JAR" ]]; then
   exit 1
 fi
 
-mkdir -p "$RUNTIME/app/src/main/assets/embedded/midlet"
 java -cp "$DX_JAR:$ZIP4J_JAR:$ASM_JAR" \
   com.android.dx.command.dexer.Main \
   --no-optimize --core-library \
@@ -66,7 +67,8 @@ cat > "$RUNTIME/app/src/standalone/AndroidManifest.xml" <<'EOF'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
  <application>
   <activity android:name=".MainActivity" tools:node="remove" />
-  <activity android:name="javax.microedition.shell.MicroActivity" android:exported="true" tools:remove="android:process" tools:replace="android:exported">
+  <activity android:name="javax.microedition.shell.MicroActivity" android:exported="false" tools:remove="android:process" tools:replace="android:exported" />
+  <activity android:name=".StandaloneLauncherActivity" android:exported="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
    <intent-filter>
     <action android:name="android.intent.action.MAIN"/>
     <category android:name="android.intent.category.LAUNCHER"/>
