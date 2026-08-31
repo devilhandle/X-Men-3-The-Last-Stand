@@ -37,6 +37,26 @@ jobs:
           find runtime/app/src/midlet/resources -type f -name '*.class' -delete
           chmod +x runtime/gradlew
 
+      - name: Create temporary debug signing keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore runtime/standalone.keystore \
+            -storepass android \
+            -alias standalone \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Standalone J2ME APK, OU=Devilhandle, O=Devilhandle, L=Unknown, S=Unknown, C=TR"
+          cat > runtime/keystore.properties <<'EOF'
+keyAlias=standalone
+keyPassword=android
+storeFile=standalone.keystore
+storePassword=android
+EOF
+
       - name: Add game JAR as embedded application code
         shell: bash
         run: |
@@ -46,7 +66,7 @@ jobs:
           p = Path('runtime/app/build.gradle')
           s = p.read_text()
           marker = "implementation project(':dexlib')"
-          addition = "\nimplementation files('src/midlet/libs/X-Men3-TheLastStand.jar')"
+          addition = "\n    implementation files('src/midlet/libs/X-Men3-TheLastStand.jar')"
           if addition.strip() not in s:
               s = s.replace(marker, marker + addition, 1)
           p.write_text(s)
