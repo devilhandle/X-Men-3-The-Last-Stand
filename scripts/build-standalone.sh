@@ -37,7 +37,7 @@ cat > "$RUNTIME/app/src/standalone/AndroidManifest.xml" <<'EOF'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
  <application>
   <activity android:name=".MainActivity" tools:node="remove" />
-  <activity android:name="javax.microedition.shell.MicroActivity" android:exported="true" android:theme="@style/AppTheme.NoActionBar" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode" tools:replace="android:exported,android:theme,android:configChanges,android:process" tools:remove="android:process">
+  <activity android:name="javax.microedition.shell.MicroActivity" android:exported="true" android:theme="@style/AppTheme.NoActionBar" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode" tools:replace="android:exported,android:theme,android:configChanges,android:process">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>
  </application>
