@@ -6,7 +6,6 @@ import android.net.Uri;
 import android.os.Bundle;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
@@ -62,8 +61,7 @@ public class StandaloneLauncherActivity extends Activity {
     }
 
     private void copyAsset(String asset, File target) throws IOException {
-        try (FileInputStream ignored = null;
-             java.io.InputStream in = getAssets().open(asset);
+        try (java.io.InputStream in = getAssets().open(asset);
              FileOutputStream out = new FileOutputStream(target)) {
             byte[] buffer = new byte[8192];
             int read;
