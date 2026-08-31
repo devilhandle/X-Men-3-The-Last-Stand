@@ -38,17 +38,25 @@ public class StandaloneLauncherActivity extends Activity {
                 throw new IOException("Cannot create game profile directory");
             }
             File config = new File(configDir, "config.json");
-            if (!config.exists()) {
-                ProfileModel profile = new ProfileModel(configDir);
-                profile.screenWidth = 240;
-                profile.screenHeight = 320;
-                profile.touchInput = true;
-                profile.showKeyboard = false;
-                profile.forceFullscreen = true;
-                profile.screenScaleToFit = true;
-                profile.screenKeepAspectRatio = true;
-                ProfilesManager.saveConfig(profile);
-            }
+            ProfileModel profile = new ProfileModel(configDir);
+            profile.screenWidth = 240;
+            profile.screenHeight = 320;
+            profile.touchInput = true;
+            profile.showKeyboard = true;
+            profile.vkType = 7; // X-Men 3 custom keypad layout
+            profile.vkAlpha = 190;
+            profile.vkForceOpacity = true;
+            profile.vkBgColor = 0x5A9EA5;
+            profile.vkBgColorSelected = 0x78B7BC;
+            profile.vkFgColor = 0x00334A;
+            profile.vkFgColorSelected = 0xFFFFFF;
+            profile.vkOutlineColor = 0xB7D9DC;
+            profile.vkFeedback = true;
+            profile.vkHideDelay = 0;
+            profile.forceFullscreen = true;
+            profile.screenScaleToFit = true;
+            profile.screenKeepAspectRatio = true;
+            ProfilesManager.saveConfig(profile);
 
             Intent intent = new Intent(this, javax.microedition.shell.MicroActivity.class);
             intent.setData(Uri.parse(appDir.getAbsolutePath()));
