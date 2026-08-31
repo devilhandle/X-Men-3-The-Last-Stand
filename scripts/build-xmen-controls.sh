@@ -12,7 +12,7 @@ s = p.read_text()
 start = s.index("case = '''")
 end = s.index("\nif needle not in s:", start)
 
-case_body = r'''\t\t\tcase TYPE_XMEN:
+case_body = """\t\t\tcase TYPE_XMEN:
 \t\t\t\t// X-Men-only controls. Never show the normal J2ME/emulator keypad.
 \t\t\t\tArrays.fill(keyScales, 1.0f);
 \t\t\t\tkeyScales[0] = 0.72f; // D-pad group
@@ -35,7 +35,7 @@ case_body = r'''\t\t\tcase TYPE_XMEN:
 \t\t\t\tsetSnap(KEY_NUM5, KEY_NUM0, RectSnap.EXT_NORTH, true);
 \t\t\t\tbreak;
 \t\t\tcase TYPE_NUM_ARR:
-\t\t\tdefault:'''
+\t\t\tdefault:"""
 
 replacement = 'case = ' + repr(case_body)
 s = s[:start] + replacement + s[end:]
