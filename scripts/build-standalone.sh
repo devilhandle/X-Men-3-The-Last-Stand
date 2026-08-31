@@ -12,8 +12,7 @@ mkdir -p "$RUNTIME/app/src/standalone"
 mkdir -p "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader"
 cp scripts/StandaloneLauncherActivity.java "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader/StandaloneLauncherActivity.java"
 
-# J2ME-Loader's build.gradle evaluates its release signing configuration even for debug builds.
-# Create a disposable debug keystore and matching properties inside the CI workspace.
+# J2ME-Loader evaluates signing configuration during Gradle configuration.
 keytool -genkeypair -v \
   -keystore "$RUNTIME/standalone-debug.keystore" \
   -storepass android \
@@ -30,18 +29,56 @@ storeFile=$RUNTIME/standalone-debug.keystore
 storePassword=android
 EOF
 
-# Add an X-Men-specific virtual keypad layout to the embedded J2ME runtime.
+# Patch the upstream virtual keyboard with a compile-safe X-Men 3 layout.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('runtime/app/src/main/java/javax/microedition/lcdui/keyboard/VirtualKeyboard.java')
 s = p.read_text()
-if 'public static final int TYPE_XMEN = 7;' not in s:
-    s = s.replace('public static final int TYPE_ARROWS = 6;', 'public static final int TYPE_ARROWS = 6;\n\tpublic static final int TYPE_XMEN = 7;', 1)
+
+s = s.replace(
+    'private static final int TYPE_ARROWS = 6;',
+    'private static final int TYPE_ARROWS = 6;\n\tprivate static final int TYPE_XMEN = 7;',
+    1,
+)
+
+# The previous generated patch could have left an invalid TYPE_XMEN block in the
+# upstream file. Remove any such block before inserting the correct one.
+start = s.find('\t\t\tcase TYPE_XMEN:')
+if start != -1:
+    end = s.find('\t\t\tcase TYPE_NUM_ARR:', start)
+    if end != -1:
+        s = s[:start] + s[end:]
+
 needle = '\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'
-case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// X-Men 3: L, R and 5 across the top; directional pad lower-left; pause lower-right.\n\t\t\t\tArrays.fill(keyScales, 1.0f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_NUM5, SCREEN, RectSnap.INT_NORTH, true);\n\t\t\t\tsetSnap(KEY_DOWN, SCREEN, RectSnap.INT_SOUTHWEST, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);\n\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tkeypad[KEY_FIRE].label = "Ⅱ";\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
-if 'case TYPE_XMEN:' not in s:
-    if needle not in s: raise SystemExit('VirtualKeyboard insertion point not found')
-    s = s.replace(needle, case, 1)
+case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// X-Men 3: L, 5, R at the top; D-pad lower-left; pause lower-right.\n\t\t\t\tArrays.fill(keyScales, 1.0f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_NUM5, SCREEN, RectSnap.INT_NORTH, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_DOWN, SCREEN, RectSnap.INT_SOUTHWEST, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
+if needle not in s:
+    raise SystemExit('X-Men keypad insertion point not found')
+s = s.replace(needle, case, 1)
+
+# KEY_FIRE's label is final in VirtualKey, so set it at construction time.
+s = s.replace(
+    'keypad[KEY_FIRE] = new VirtualKey(Canvas.KEY_FIRE, "F");',
+    'keypad[KEY_FIRE] = new VirtualKey(Canvas.KEY_FIRE, "Ⅱ");',
+    1,
+)
+s = s.replace('\n\t\t\t\tkeypad[KEY_FIRE].label = "Ⅱ";', '', 1)
+p.write_text(s)
+PY
+
+# Make the standalone activity the only launcher. This prevents the J2ME Loader
+# game list, file picker and settings screen from ever being the first screen.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('runtime/app/src/main/AndroidManifest.xml')
+s = p.read_text()
+launcher = '''            <intent-filter>\n                <action android:name="android.intent.action.MAIN" />\n\n                <category android:name="android.intent.category.LAUNCHER" />\n            </intent-filter>\n'''
+s = s.replace(launcher, '', 1)
+activity = '''        <activity\n            android:name=".StandaloneLauncherActivity"\n            android:exported="true"\n            android:theme="@style/AppTheme.NoActionBar"\n            android:screenOrientation="landscape"\n            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode">\n            <intent-filter>\n                <action android:name="android.intent.action.MAIN" />\n                <category android:name="android.intent.category.LAUNCHER" />\n            </intent-filter>\n        </activity>\n'''
+marker = '        <activity\n            android:name="javax.microedition.shell.MicroActivity"'
+if '.StandaloneLauncherActivity' not in s:
+    if marker not in s:
+        raise SystemExit('MicroActivity manifest marker not found')
+    s = s.replace(marker, activity + marker, 1)
 p.write_text(s)
 PY
 
@@ -81,7 +118,8 @@ if "buildConfigField 'boolean', 'STANDALONE'" not in s:
     s=s.replace('        versionName "1.8.2"','        versionName "1.8.2"\n        buildConfigField \'boolean\', \'STANDALONE\', \'false\'',1)
 marker='        // variant dimension for create android port from J2ME app source\n'
 flavor='''        standalone {\n            buildConfigField 'boolean', 'STANDALONE', 'true'\n            buildConfigField 'boolean', 'FULL_EMULATOR', 'true'\n            versionNameSuffix "-standalone"\n            resValue 'string', 'app_name', 'X-Men 3 - The Last Stand'\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),\n                    'proguard-rules.pro', 'proguard-common.pro'\n        }\n'''
-if '        standalone {' not in s: s=s.replace(marker,flavor+marker,1)
+if '        standalone {' not in s:
+    s=s.replace(marker,flavor+marker,1)
 p.write_text(s)
 PY
 
