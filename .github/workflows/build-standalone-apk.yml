@@ -1,102 +1,30 @@
 name: Build Standalone APK
 
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - 'X-Men3-TheLastStand_s40v3a.jar'
-      - '.github/workflows/build-standalone-apk.yml'
-
-permissions:
-  contents: read
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Checkout game repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Prepare J2ME-Loader runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --depth 1 https://github.com/nikita36078/J2ME-Loader.git runtime
-          mkdir -p runtime/app/src/midlet/libs
-          mkdir -p runtime/app/src/midlet/resources/MIDLET-META-INF
-          cp X-Men3-TheLastStand_s40v3a.jar runtime/app/src/midlet/libs/X-Men3-TheLastStand.jar
-          unzip -p X-Men3-TheLastStand_s40v3a.jar META-INF/MANIFEST.MF > runtime/app/src/midlet/resources/MIDLET-META-INF/MANIFEST.MF
-          unzip -oq runtime/app/src/midlet/libs/X-Men3-TheLastStand.jar -d runtime/app/src/midlet/resources
-          rm -rf runtime/app/src/midlet/resources/META-INF
-          find runtime/app/src/midlet/resources -type f -name '*.class' -delete
-          chmod +x runtime/gradlew
-
-      - name: Create temporary debug signing keystore
-        shell: bash
-        run: |
-          set -euo pipefail
-          keytool -genkeypair -v \
-            -keystore runtime/standalone.keystore \
-            -storepass android \
-            -alias standalone \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Standalone J2ME APK, OU=Devilhandle, O=Devilhandle, L=Unknown, S=Unknown, C=TR"
-          cat > runtime/keystore.properties <<'EOF'
-keyAlias=standalone
-keyPassword=android
-storeFile=standalone.keystore
-storePassword=android
-EOF
-
-      - name: Add game JAR as embedded application code
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('runtime/app/build.gradle')
-          s = p.read_text()
-          marker = "implementation project(':dexlib')"
-          addition = "\n    implementation files('src/midlet/libs/X-Men3-TheLastStand.jar')"
-          if addition.strip() not in s:
-              s = s.replace(marker, marker + addition, 1)
-          p.write_text(s)
-          PY
-
-      - name: Make the embedded build self-initializing
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('runtime/app/src/main/java/javax/microedition/shell/MicroActivity.java')
-          s = p.read_text()
-          if 'import ru.playsoftware.j2meloader.config.ProfileModel;' not in s:
-              s = s.replace('import ru.playsoftware.j2meloader.config.Config;\n',
-                            'import ru.playsoftware.j2meloader.config.Config;\n'
-                            'import ru.playsoftware.j2meloader.config.ProfileModel;\n'
-                            'import ru.playsoftware.j2meloader.config.ProfilesManager;\n')
-          marker = '\t\tmicroLoader = new MicroLoader(this, appPath);\n'
-          inject = '''\t\t// Standalone MIDlet: initialize a default profile and never expose launcher UI.\n\t\tif (!BuildConfig.FULL_EMULATOR) {\n\t\t\tFile profileDir = new File(getApplicationInfo().dataDir + "/files/configs/midlet");\n\t\t\tFile profileFile = new File(profileDir, "config.json");\n\t\t\tif (!profileFile.exists()) {\n\t\t\t\tif (!profileDir.exists() && !profileDir.mkdirs()) {\n\t\t\t\t\tthrow new RuntimeException("Can't create embedded MIDlet profile");\n\t\t\t\t}\n\t\t\t\tProfileModel defaults = new ProfileModel(profileDir);\n\t\t\t\tdefaults.showKeyboard = false;\n\t\t\t\tdefaults.touchInput = true;\n\t\t\t\tdefaults.forceFullscreen = true;\n\t\t\t\tProfilesManager.saveConfig(defaults);\n\t\t\t}\n\t\t}\n\n'''
-          if inject.strip() not in s:
-              s = s.replace(marker, inject + marker, 1)
-          p.write_text(s)
-          PY
-
       - name: Build standalone APK
-        working-directory: runtime
-        run: ./gradlew :app:assembleMidletDebug --no-daemon --stacktrace
+        run: bash scripts/build-standalone.sh
 
-      - name: Publish APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: X-Men-3-The-Last-Stand-Standalone-APK
