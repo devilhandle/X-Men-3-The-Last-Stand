@@ -22,7 +22,7 @@ jobs:
           java-version: '17'
 
       - name: Build standalone APK
-        run: bash scripts/build-standalone.sh
+        run: bash scripts/build-xmen-controls.sh
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
