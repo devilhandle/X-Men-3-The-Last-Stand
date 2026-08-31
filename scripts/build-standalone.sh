@@ -12,7 +12,6 @@ mkdir -p "$RUNTIME/app/src/standalone"
 mkdir -p "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader"
 cp scripts/StandaloneLauncherActivity.java "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader/StandaloneLauncherActivity.java"
 
-# J2ME-Loader evaluates signing configuration during Gradle configuration.
 keytool -genkeypair -v \
   -keystore "$RUNTIME/standalone-debug.keystore" \
   -storepass android \
@@ -29,7 +28,7 @@ storeFile=$RUNTIME/standalone-debug.keystore
 storePassword=android
 EOF
 
-# Patch the upstream virtual keyboard with a compile-safe X-Men 3 layout.
+# Install the X-Men-only virtual keyboard into the standalone runtime.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('runtime/app/src/main/java/javax/microedition/lcdui/keyboard/VirtualKeyboard.java')
@@ -41,8 +40,6 @@ s = s.replace(
     1,
 )
 
-# The previous generated patch could have left an invalid TYPE_XMEN block in the
-# upstream file. Remove any such block before inserting the correct one.
 start = s.find('\t\t\tcase TYPE_XMEN:')
 if start != -1:
     end = s.find('\t\t\tcase TYPE_NUM_ARR:', start)
@@ -50,23 +47,27 @@ if start != -1:
         s = s[:start] + s[end:]
 
 needle = '\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'
-case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// X-Men 3: L, 5, R at the top; D-pad lower-left; pause lower-right.\n\t\t\t\tArrays.fill(keyScales, 1.0f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_NUM5, SCREEN, RectSnap.INT_NORTH, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_DOWN, SCREEN, RectSnap.INT_SOUTHWEST, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
+case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// Only the requested X-Men controls are visible. No phone, numeric,\n\t\t\t\t// emulator or default keypad is allowed to appear.\n\t\t\t\tArrays.fill(keyScales, 1.0f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\n\t\t\t\t// L and R at the upper edge.\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);\n\n\t\t\t\t// Supplied keypad: home/up symbol, left, right and down at the bottom-left.\n\t\t\t\tsetSnap(KEY_UP, SCREEN, RectSnap.INT_SOUTHWEST, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_UP, RectSnap.EXT_WEST, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_UP, RectSnap.EXT_EAST, true);\n\t\t\t\tsetSnap(KEY_DOWN, KEY_UP, RectSnap.EXT_SOUTH, true);\n\n\t\t\t\t// 5 in the lower-right/middle and pause in the bottom-right.\n\t\t\t\tsetSnap(KEY_NUM5, SCREEN, RectSnap.INT_EAST, true);\n\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
 if needle not in s:
     raise SystemExit('X-Men keypad insertion point not found')
 s = s.replace(needle, case, 1)
 
-# KEY_FIRE's label is final in VirtualKey, so set it at construction time.
+# The supplied image uses a home-shaped symbol for the upper-left directional button.
+s = s.replace(
+    'keypad[KEY_UP] = new VirtualKey(Canvas.KEY_UP, ARROW_UP);',
+    'keypad[KEY_UP] = new VirtualKey(Canvas.KEY_UP, "⌂");',
+    1,
+)
+# The supplied image uses a pause symbol rather than the generic F label.
 s = s.replace(
     'keypad[KEY_FIRE] = new VirtualKey(Canvas.KEY_FIRE, "F");',
     'keypad[KEY_FIRE] = new VirtualKey(Canvas.KEY_FIRE, "Ⅱ");',
     1,
 )
-s = s.replace('\n\t\t\t\tkeypad[KEY_FIRE].label = "Ⅱ";', '', 1)
 p.write_text(s)
 PY
 
-# Make the standalone activity the only launcher. This prevents the J2ME Loader
-# game list, file picker and settings screen from ever being the first screen.
+# Make the standalone activity the only launcher.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('runtime/app/src/main/AndroidManifest.xml')
@@ -91,7 +92,6 @@ DX_JAR="$(mktemp --suffix=.jar)"
 unzip -p "$DX_AAR" classes.jar > "$DX_JAR"
 ZIP4J_JAR="$(find "$HOME/.gradle/caches/modules-2/files-2.1/net.lingala.zip4j/zip4j/2.10.0" -name 'zip4j-2.10.0.jar' -print -quit)"
 ASM_JAR="$(find "$HOME/.gradle/caches/modules-2/files-2.1/org.ow2.asm/asm/9.8" -name 'asm-9.8.jar' -print -quit)"
-
 if [[ -z "$ZIP4J_JAR" || -z "$ASM_JAR" ]]; then
   echo "Required dexlib dependencies were not found"
   exit 1
