@@ -1,45 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the standalone game with a dedicated X-Men control layout.
 python3 - <<'PY'
 from pathlib import Path
 import re
 
 p = Path('scripts/build-standalone.sh')
 s = p.read_text()
-s = s.replace(
-    'private static final int TYPE_ARROWS = 6;',
-    'private static final int TYPE_ARROWS = 6;\n\tprivate static final int TYPE_XMEN = 7;',
-    1,
+tab = chr(9)
+nl = chr(10)
+
+old = 'private static final int TYPE_ARROWS = 6;'
+new = old + nl + tab + 'private static final int TYPE_XMEN = 7;'
+s = s.replace(old, new, 1)
+
+block = (
+    tab + tab + tab + 'case TYPE_XMEN:' + nl
+    + tab + tab + tab + tab + '// X-Men-only controls. No normal J2ME/emulator keypad.' + nl
+    + tab + tab + tab + tab + 'Arrays.fill(keyScales, 0.72f);' + nl + nl
+    + tab + tab + tab + tab + '// L and R at the upper left/right.' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);' + nl + nl
+    + tab + tab + tab + tab + '// Hidden bottom anchor keeps the D-pad comfortably inside the screen.' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTH, false);' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_DOWN, KEY_FIRE, RectSnap.EXT_NORTH, true);' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_LEFT, KEY_UP, RectSnap.EXT_WEST, true);' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_RIGHT, KEY_UP, RectSnap.EXT_EAST, true);' + nl + nl
+    + tab + tab + tab + tab + '// Hidden lower-right anchor keeps 5/0 away from the screen edge.' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_MENU, SCREEN, RectSnap.INT_SOUTHEAST, false);' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_NUM0, KEY_MENU, RectSnap.EXT_NORTHWEST, true);' + nl
+    + tab + tab + tab + tab + 'setSnap(KEY_NUM5, KEY_NUM0, RectSnap.EXT_NORTH, true);' + nl
+    + tab + tab + tab + tab + 'break;' + nl
+    + tab + tab + tab + 'case TYPE_NUM_ARR:' + nl
+    + tab + tab + tab + 'default:'
 )
 
-block = r'''\t\t\tcase TYPE_XMEN:
-\t\t\t\t// X-Men-only controls. No normal J2ME/emulator keypad.
-\t\t\t\tArrays.fill(keyScales, 0.72f);
-
-\t\t\t\t// L and R at the upper left/right.
-\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);
-\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);
-
-\t\t\t\t// Hidden anchor one key-height above the bottom keeps the D-pad off the edge.
-\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTH, false);
-\t\t\t\tsetSnap(KEY_DOWN, KEY_FIRE, RectSnap.EXT_NORTH, true);
-\t\t\t\tsetSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);
-\t\t\t\tsetSnap(KEY_LEFT, KEY_UP, RectSnap.EXT_WEST, true);
-\t\t\t\tsetSnap(KEY_RIGHT, KEY_UP, RectSnap.EXT_EAST, true);
-
-\t\t\t\t// Hidden lower-right anchor keeps 5/0 away from the screen edge.
-\t\t\t\tsetSnap(KEY_MENU, SCREEN, RectSnap.INT_SOUTHEAST, false);
-\t\t\t\tsetSnap(KEY_NUM0, KEY_MENU, RectSnap.EXT_NORTHWEST, true);
-\t\t\t\tsetSnap(KEY_NUM5, KEY_NUM0, RectSnap.EXT_NORTH, true);
-\t\t\t\tbreak;
-\t\t\tcase TYPE_NUM_ARR:
-\t\t\tdefault:'''
-block = block.replace('\\t', '\t')
-s = re.sub(r'\t\t\tcase TYPE_XMEN:.*?\t\t\tcase TYPE_NUM_ARR:', block, s, count=1, flags=re.S)
+# Replace any previous X-Men block, or insert it before the normal numeric layout.
+s = re.sub(tab + tab + tab + r'case TYPE_XMEN:.*?' + tab + tab + tab + r'case TYPE_NUM_ARR:', block, s, count=1, flags=re.S)
 if 'case TYPE_XMEN:' not in s:
-    needle = '\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'
+    needle = tab + tab + tab + 'case TYPE_NUM_ARR:' + nl + tab + tab + tab + 'default:'
     if needle not in s:
         raise SystemExit('Could not find keyboard layout insertion point')
     s = s.replace(needle, block, 1)
@@ -52,7 +52,7 @@ s = s.replace(
 p.write_text(s)
 PY
 
-# X-Men-inspired steel/black/blue button palette.
+# Steel / black / blue palette inspired by the game's metallic X-Men look.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('scripts/StandaloneLauncherActivity.java')
