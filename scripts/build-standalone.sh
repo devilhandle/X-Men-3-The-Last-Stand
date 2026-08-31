@@ -12,6 +12,21 @@ mkdir -p "$RUNTIME/app/src/standalone"
 mkdir -p "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader"
 cp scripts/StandaloneLauncherActivity.java "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader/StandaloneLauncherActivity.java"
 
+# Supply a local debug keystore because upstream Gradle evaluates its signing block
+# even when the standalone debug variant itself is not signed with release settings.
+keytool -genkeypair -v \
+  -keystore "$RUNTIME/debug.keystore" \
+  -alias androiddebugkey \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass android -keypass android \
+  -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+cat > "$RUNTIME/keystore.properties" <<'EOF'
+keyAlias=androiddebugkey
+keyPassword=android
+storeFile=debug.keystore
+storePassword=android
+EOF
+
 # Build the bundled J2ME Loader dexlib so the same converter used by J2ME Loader
 # can convert the original MIDlet JAR into the runtime's converted.dex format.
 cd "$RUNTIME"
