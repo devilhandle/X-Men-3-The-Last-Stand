@@ -1,0 +1,89 @@
+name: Build Standalone APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'X-Men3-TheLastStand_s40v3a.jar'
+      - '.github/workflows/build-standalone-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout game repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare J2ME-Loader runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/nikita36078/J2ME-Loader.git runtime
+          mkdir -p runtime/app/src/midlet/libs
+          mkdir -p runtime/app/src/midlet/resources/MIDLET-META-INF
+          cp X-Men3-TheLastStand_s40v3a.jar runtime/app/src/midlet/libs/X-Men3-TheLastStand.jar
+
+          # The midlet flavor reads the original JAR manifest at Gradle configuration time.
+          unzip -p X-Men3-TheLastStand_s40v3a.jar META-INF/MANIFEST.MF \
+            > runtime/app/src/midlet/resources/MIDLET-META-INF/MANIFEST.MF
+
+          # Package the JAR's non-class resources into the APK so J2ME resource lookups work
+          # without an external game file or J2ME Loader storage directory.
+          (cd runtime/app/src/midlet/resources && unzip -o ../../../libs/X-Men3-TheLastStand.jar \
+            '*/' '*.png' '*.jpg' '*.jpeg' '*.gif' '*.wav' '*.mid' '*.midi' '*.mp3' '*.amr' '*.dat' '*.bin' '*.txt' '*.xml' '*.properties' '*.cfg' '*.ini' '*.ser' '*.res' '*.m3g' '*.mbac' '*.mmf' '*.jar' >/dev/null || true)
+
+      - name: Add game JAR as embedded application code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('runtime/app/build.gradle')
+          s = p.read_text()
+          marker = "implementation project(':dexlib')"
+          addition = "\nimplementation files('src/midlet/libs/X-Men3-TheLastStand.jar')"
+          if addition.strip() not in s:
+              s = s.replace(marker, marker + addition, 1)
+          p.write_text(s)
+          PY
+
+      - name: Make the embedded build self-initializing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('runtime/app/src/main/java/javax/microedition/shell/MicroActivity.java')
+          s = p.read_text()
+          if 'ProfileModel' not in s:
+              s = s.replace('import ru.playsoftware.j2meloader.config.Config;\n',
+                            'import ru.playsoftware.j2meloader.config.Config;\n'
+                            'import ru.playsoftware.j2meloader.config.ProfileModel;\n'
+                            'import ru.playsoftware.j2meloader.config.ProfilesManager;\n')
+          marker = '\t\tmicroLoader = new MicroLoader(this, appPath);\n'
+          inject = '''\t\t// Standalone midlet builds must never open the emulator settings screen.\n\t\t// Create a default profile on first launch so MicroLoader can start directly.\n\t\tif (!BuildConfig.FULL_EMULATOR) {\n\t\t\tFile profileDir = new File(getApplicationInfo().dataDir + "/files/configs/midlet");\n\t\t\tFile profileFile = new File(profileDir, Config.MIDLET_CONFIG_FILE);\n\t\t\tif (!profileFile.exists()) {\n\t\t\t\tif (!profileDir.exists() && !profileDir.mkdirs()) {\n\t\t\t\t\tthrow new RuntimeException("Can't create embedded MIDlet profile");\n\t\t\t\t}\n\t\t\t\tProfileModel defaults = new ProfileModel(profileDir);\n\t\t\t\tdefaults.showKeyboard = false;\n\t\t\t\tdefaults.touchInput = true;\n\t\t\t\tdefaults.forceFullscreen = true;\n\t\t\t\tProfilesManager.saveConfig(defaults);\n\t\t\t}\n\t\t}\n\n'''
+          if inject.strip() not in s:
+              s = s.replace(marker, inject + marker, 1)
+          p.write_text(s)
+          PY
+
+      - name: Build standalone APK
+        working-directory: runtime
+        run: ./gradlew :app:assembleMidletDebug --no-daemon --stacktrace
+
+      - name: Publish APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: X-Men-3-The-Last-Stand-Standalone-APK
+          path: runtime/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
