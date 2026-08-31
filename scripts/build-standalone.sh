@@ -6,6 +6,7 @@ RUNTIME="runtime"
 
 rm -rf "$RUNTIME"
 git clone --depth 1 https://github.com/nikita36078/J2ME-Loader.git "$RUNTIME"
+chmod +x "$RUNTIME/gradlew"
 mkdir -p "$RUNTIME/app/src/main/assets/embedded/midlet"
 mkdir -p "$RUNTIME/app/src/standalone"
 mkdir -p "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader"
