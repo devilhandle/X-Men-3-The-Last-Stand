@@ -12,6 +12,24 @@ mkdir -p "$RUNTIME/app/src/standalone"
 mkdir -p "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader"
 cp scripts/StandaloneLauncherActivity.java "$RUNTIME/app/src/main/java/ru/playsoftware/j2meloader/StandaloneLauncherActivity.java"
 
+# J2ME-Loader's build.gradle evaluates its release signing configuration even for debug builds.
+# Create a disposable debug keystore and matching properties inside the CI workspace.
+keytool -genkeypair -v \
+  -keystore "$RUNTIME/standalone-debug.keystore" \
+  -storepass android \
+  -alias androiddebugkey \
+  -keypass android \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+cat > "$RUNTIME/keystore.properties" <<EOF
+keyAlias=androiddebugkey
+keyPassword=android
+storeFile=$RUNTIME/standalone-debug.keystore
+storePassword=android
+EOF
+
 # Add an X-Men-specific virtual keypad layout to the embedded J2ME runtime.
 python3 - <<'PY'
 from pathlib import Path
@@ -20,7 +38,7 @@ s = p.read_text()
 if 'public static final int TYPE_XMEN = 7;' not in s:
     s = s.replace('public static final int TYPE_ARROWS = 6;', 'public static final int TYPE_ARROWS = 6;\n\tpublic static final int TYPE_XMEN = 7;', 1)
 needle = '\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'
-case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// X-Men 3: L/R/S at the top, directional pad lower-left, pause lower-right.\n\t\t\t\tArrays.fill(keyScales, 1.0f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTH, true);\n\t\t\t\tsetSnap(KEY_MENU, SCREEN, RectSnap.INT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_DOWN, SCREEN, RectSnap.INT_SOUTHWEST, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);\n\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tkeypad[KEY_FIRE].label = "Ⅱ";\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
+case = '''\t\t\tcase TYPE_XMEN:\n\t\t\t\t// X-Men 3: L, R and 5 across the top; directional pad lower-left; pause lower-right.\n\t\t\t\tArrays.fill(keyScales, 1.0f);\n\t\t\t\tfor (VirtualKey key : keypad) key.visible = false;\n\t\t\t\tsetSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_NUM5, SCREEN, RectSnap.INT_NORTH, true);\n\t\t\t\tsetSnap(KEY_DOWN, SCREEN, RectSnap.INT_SOUTHWEST, true);\n\t\t\t\tsetSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_NORTHWEST, true);\n\t\t\t\tsetSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_NORTHEAST, true);\n\t\t\t\tsetSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);\n\t\t\t\tsetSnap(KEY_FIRE, SCREEN, RectSnap.INT_SOUTHEAST, true);\n\t\t\t\tkeypad[KEY_FIRE].label = "Ⅱ";\n\t\t\t\tbreak;\n\t\t\tcase TYPE_NUM_ARR:\n\t\t\tdefault:'''
 if 'case TYPE_XMEN:' not in s:
     if needle not in s: raise SystemExit('VirtualKeyboard insertion point not found')
     s = s.replace(needle, case, 1)
